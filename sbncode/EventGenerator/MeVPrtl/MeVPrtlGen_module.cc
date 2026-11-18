@@ -77,10 +77,24 @@ public:
   bool Deweight(double &weight, double &max_weight);
 
   ~MeVPrtlGen() noexcept {
-    std::cout << "GenTool called (" << fNCalls[0] << ") times. Total duration (" << fNTime[0] << ") ms. Duration per call (" << (fNTime[0] / fNCalls[0]) << ") ms.\n";
-    std::cout << "FlxTool called (" << fNCalls[1] << ") times. Total duration (" << fNTime[1] << ") ms. Duration per call (" << (fNTime[1] / fNCalls[1]) << ") ms.\n";
-    std::cout << "RayTool called (" << fNCalls[2] << ") times. Total duration (" << fNTime[2] << ") ms. Duration per call (" << (fNTime[2] / fNCalls[2]) << ") ms.\n";
-    std::cout << "DcyTool called (" << fNCalls[3] << ") times. Total duration (" << fNTime[3] << ") ms. Duration per call (" << (fNTime[3] / fNCalls[3]) << ") ms.\n";
+    std::cout << "GenTool called (" << fNCalls[0] << ") times. Total duration ("
+              << fNTime[0] << ") ms. Duration per call (" << (fNTime[0] / fNCalls[0]) << ") ms.\n";
+    std::cout << "FlxTool called (" << fNCalls[1] << ") times. Total duration ("
+              << fNTime[1] << ") ms. Duration per call (" << (fNTime[1] / fNCalls[1]) << ") ms.\n";
+    std::cout << "RayTool called (" << fNCalls[2] << ") times. Total duration ("
+              << fNTime[2] << ") ms. Duration per call (" << (fNTime[2] / fNCalls[2]) << ") ms.\n";
+    std::cout << "DcyTool called (" << fNCalls[3] << ") times. Total duration ("
+              << fNTime[3] << ") ms. Duration per call (" << (fNTime[3] / fNCalls[3]) << ") ms.\n";
+
+    std::cout << "Decay() failures: " << fNDecayFail << "\n";
+    std::cout << "RayDecay deweight rejects: " << fNRayDecayReject << "\n";
+
+    std::cout << "Sum of ray weights: " << fSumRayWeight << "\n";
+    std::cout << "Sum of decay weights: " << fSumDecayWeight << "\n";
+    std::cout << "Sum of ray x decay weights: " << fSumRayDecayWeight << "\n";
+    std::cout << "Observed raw max  ray weight: " << fMaxRayObserved << "\n";
+    std::cout << "Observed raw max decay weight: " << fMaxDecayObserved << "\n";
+    std::cout << "Observed raw max ray x decay weight: " << fMaxRayDecayObserved << "\n";
 
     if (fEngine) delete fEngine;
     if (fMeVPrtl) delete fMeVPrtl;
@@ -112,6 +126,17 @@ private:
 
   std::array<uint64_t, 4> fNCalls;
   std::array<double, 4> fNTime;
+  uint64_t fNDecayFail;
+  uint64_t fNRayDecayReject;
+
+  uint64_t fNWeightSamples;
+  double fSumRayWeight;
+  double fSumDecayWeight;
+  double fSumRayDecayWeight;
+
+  double fMaxRayObserved;
+  double fMaxDecayObserved;
+  double fMaxRayDecayObserved;
 };
 
 evgen::ldm::MeVPrtlGen::MeVPrtlGen(fhicl::ParameterSet const& p)
@@ -149,6 +174,18 @@ evgen::ldm::MeVPrtlGen::MeVPrtlGen(fhicl::ParameterSet const& p)
   fDecayMaxWeight = fDecayTool->MaxWeight();
   if (fVerbose) std::cout << "Decay max weight: " << fDecayMaxWeight << std::endl;
 
+  double rayMaxWeightOverride = p.get<double>("RayMaxWeightOverride", -1.0);
+
+  if (rayMaxWeightOverride > 0.) {
+    std::cout << "Overriding Ray max weight from "
+              << fRayMaxWeight
+              << " to "
+              << rayMaxWeightOverride
+              << std::endl;
+
+    fRayMaxWeight = rayMaxWeightOverride;
+  }
+
   fRayDecayMaxWeight = fDecayMaxWeight*fRayMaxWeight;
 
   if (fProduce) {
@@ -178,6 +215,15 @@ evgen::ldm::MeVPrtlGen::MeVPrtlGen(fhicl::ParameterSet const& p)
 
   fNCalls = {0, 0, 0, 0};
   fNTime = {0., 0., 0., 0.};
+
+  fNDecayFail = 0;
+  fNRayDecayReject = 0;
+  fSumRayWeight = 0;
+  fSumDecayWeight = 0;
+  fSumRayDecayWeight = 0;
+  fMaxRayObserved = 0;
+  fMaxDecayObserved = 0;
+  fMaxRayDecayObserved = 0;
 }
 
 void evgen::ldm::MeVPrtlGen::beginRun(art::Run& run) {
@@ -247,7 +293,7 @@ void evgen::ldm::MeVPrtlGen::produce(art::Event& evt)
     fNCalls[0] ++;
     std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> duration = t2 - t1;
-    fNTime[0] = duration.count();
+    fNTime[0] += duration.count();
 
     evgen::ldm::MesonParent mesonp(meson);
     bool is_meson = mesonp.meson_pdg != 0;
@@ -304,15 +350,34 @@ void evgen::ldm::MeVPrtlGen::produce(art::Event& evt)
     duration = t2 - t1;
     fNTime[3] += duration.count();
 
-    if (!success) continue;
+    if (!success) {
+      fNDecayFail++;
+      continue;
+    }
 
     if (fVerbose) std::cout << "Decay weight: " << decay_weight << std::endl;
 
-    // Deweight the ray and decay weights together because they have some anti-correlation
+    fNWeightSamples++;
+
+    fSumRayWeight += ray_weight;
+    fSumDecayWeight += decay_weight;
+
     double ray_decay_weight = ray_weight * decay_weight;
+    fSumRayDecayWeight += ray_decay_weight;
+
+    fMaxRayObserved = std::max(fMaxRayObserved, ray_weight);
+    fMaxDecayObserved = std::max(fMaxDecayObserved, decay_weight);
+    fMaxRayDecayObserved =
+        std::max(fMaxRayDecayObserved, ray_decay_weight);
+
+    // Deweight the ray and decay weights together because they have some anti-correlation
+    //double ray_decay_weight = ray_weight * decay_weight;
     success = Deweight(ray_decay_weight, fRayDecayMaxWeight);
 
-    if (!success) continue;
+    if (!success){
+      fNRayDecayReject++;
+      continue;
+    }
 
     if (fVerbose) std::cout << "RayDecay weight: " << ray_decay_weight << std::endl;
     if (fVerbose) std::cout << "PASSED!\n";

@@ -119,8 +119,18 @@ void WeightedRayTraceBox::configure(fhicl::ParameterSet const &pset)
   fReferenceScndPDG = pset.get<int>("ReferenceScndPDG");
   fReferencePrimPDG = pset.get<int>("ReferencePrimPDG");
   fReferencePrimaryEnergy = pset.get<double>("ReferencePrimaryEnergy");
+  fReferenceLabSolidAngle = pset.get<double>("ReferenceLabSolidAngle");
+
+  std::cout << "WeightedRayTraceBox reference params:\n"
+            << "  ReferenceLabSolidAngle = " << fReferenceLabSolidAngle << "\n"
+            << "  ReferencePrtlMass = " << fReferencePrtlMass << "\n"
+            << "  ReferenceScndPDG = " << fReferenceScndPDG << "\n"
+            << "  ReferencePrimPDG = " << fReferencePrimPDG << "\n"
+            << "  ReferencePrimaryEnergy = " << fReferencePrimaryEnergy << "\n";
 
   CalculateMaxWeight();
+
+  std::cout << "WeightedRayTraceBox fMaxWeight = " << fMaxWeight << std::endl;
 
   // TEST: compare this weight calc to calcENuWeight
   // uncomment to run

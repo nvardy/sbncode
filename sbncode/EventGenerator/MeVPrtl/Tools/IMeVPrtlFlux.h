@@ -92,6 +92,17 @@ public:
           evgb::EvtTimeShiftFactory::Instance().Print();
         }
       }
+
+      std::cout << "DEBUG IMeVPrtlFlux SpillTimeConfig = '"
+                << fSpillTimeConfig << "'" << std::endl;
+
+      std::cout << "DEBUG IMeVPrtlFlux GlobalTimeOffset = "
+                << fGlobalTimeOffset << std::endl;
+
+      std::cout << "DEBUG IMeVPrtlFlux fTimeShiftMethod = "
+                << fTimeShiftMethod << std::endl;
+
+      evgb::EvtTimeShiftFactory::Instance().Print();
     
      if (fTimeShiftMethod && fVerbose) {
         std::cout << "Timing Config:\n";
@@ -121,6 +132,12 @@ protected:
     // subtract out the delay of neutrinos reaching the beam
     // double neutrino_tif = fBeamOrigin.Mag()/Constants::Instance().c_cm_per_ns;
     // toff -= neutrino_tif;
+    if (fVerbose){
+      std::cout << "DEBUG BeamOrigin toff = " << toff
+                << " fTimeShiftMethod = " << fTimeShiftMethod
+                << std::endl;
+    }
+
     return TLorentzVector(fBeamOrigin, toff);
   }
 
